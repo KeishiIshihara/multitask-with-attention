@@ -1,0 +1,4 @@
+[submodule "driving_benchmarks"]
+	path = driving_benchmarks
+	url = https://github.com/KeishiIshihara/driving-benchmarks
+	branch = master
