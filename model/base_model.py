@@ -15,7 +15,8 @@ def load_weights(model, weight_path):
         else:
             status = checkpoint.restore(weight_path).expect_partial()
     except Exception as e:
-        logging.exception(e); sys.exit()
+        logging.exception(e)
+        sys.exit()
     else:
         logging.info('Weights loaded successfully')
 
@@ -43,9 +44,10 @@ class Model(tf.keras.Model, metaclass=ABCMeta):
             else:
                 status = self.checkpoint.restore(weight_path).expect_partial()
         except Exception as e:
-            print(e); sys.exit()
+            print(e)
+            sys.exit()
         else:
-            print('[INFO] Weights loaded successfully')
+            print('Weights loaded successfully')
 
         status.assert_existing_objects_matched()
 

@@ -1,4 +1,7 @@
+import cv2
+import numpy as np
 import tensorflow as tf
+from skimage.io import imsave
 
 try:
     from .base_model import Model
@@ -32,8 +35,8 @@ class Baseline(Model):
         self.len_sequence_output = len_sequence_output
 
         self.branch_names = ["Follow", "Left", "Right", "Straight"]
-        self.branch_config =  [ ["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"],
-                                ["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"] ]
+        self.branch_config = [["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"],
+                              ["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"]]
         self.num_branch = len(self.branch_names)
         self.num_output = len(self.branch_config[0])
         self.nav_cmd_shape = (self.num_branch,)
@@ -54,9 +57,9 @@ class Baseline(Model):
     def build_model(self, plot=False, **kwargs):
         self._has_built = True
 
-        #--------------------------------
+        # --------------------------------
         # *********  Modules *********
-        #--------------------------------
+        # --------------------------------
 
         # ResNet
         ResNet = ModelsFactory.get('resnet34')
@@ -77,9 +80,9 @@ class Baseline(Model):
         for up in up_stack:
             x = up(x)
         x = tf.keras.layers.Conv2DTranspose(32, 4, strides=2, padding='same')(x)
-        x = tf.keras.layers.BatchNormalization()(x) # added
+        x = tf.keras.layers.BatchNormalization()(x)  # added
         x = tf.keras.layers.ReLU()(x)
-        segmentation = tf.keras.layers.Conv2D(13, 1, strides=1, padding='same')(x) # This output should be unscaled
+        segmentation = tf.keras.layers.Conv2D(13, 1, strides=1, padding='same')(x)  # This output should be unscaled
         self.SegNet = tf.keras.Model(inputs=latent_inputs, outputs=segmentation, name='segnet')
         self._modules['SegNet'] = self.SegNet
 
@@ -94,10 +97,10 @@ class Baseline(Model):
         for up in up_stack:
             x = up(x)
         x = tf.keras.layers.Conv2DTranspose(32, 4, strides=2, padding='same')(x)
-        x = tf.keras.layers.BatchNormalization()(x) # added
+        x = tf.keras.layers.BatchNormalization()(x)  # added
         x = tf.keras.layers.ReLU()(x)
-        x = tf.keras.layers.Conv2D(1, 3, strides=1, padding='same')(x) # Should I scale this output?
-        x = tf.keras.layers.BatchNormalization()(x) # added
+        x = tf.keras.layers.Conv2D(1, 3, strides=1, padding='same')(x)  # Should I scale this output?
+        x = tf.keras.layers.BatchNormalization()(x)  # added
         depth = tf.keras.layers.Activation('sigmoid')(x)
         self.DepthNet = tf.keras.Model(inputs=latent_inputs, outputs=depth, name='depthnet')
         self._modules['DepthNet'] = self.DepthNet
@@ -107,7 +110,7 @@ class Baseline(Model):
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
         x = fc_block(x, 128, 0.3)
         x = fc_block(x, 128, 0.2)
-        tl_state = tf.keras.layers.Dense(4, name='tl_state_predicted')(x) # Unscaled
+        tl_state = tf.keras.layers.Dense(4, name='tl_state_predicted')(x)  # Unscaled
         self.LightClassifier = tf.keras.Model(inputs=latent_inputs, outputs=tl_state, name='tl_classifier')
         self._modules['LightClassifier'] = self.LightClassifier
 
@@ -138,11 +141,9 @@ class Baseline(Model):
         self.SpeedEncoder = tf.keras.Model(inputs=input_speed, outputs=speed_encoded, name='speed_encoder')
         self._modules['SpeedEncoder'] = self.SpeedEncoder
 
-
-
-        #----------------------------------------
+        # ----------------------------------------
         # ****** Building Entire Network *******
-        #----------------------------------------
+        # ----------------------------------------
 
         inputs = tf.keras.layers.Input(shape=self.input_size, name='input_image')
         z = self.Encoder(inputs)
@@ -196,7 +197,8 @@ class Baseline(Model):
         # Each control loss
         control_weights = class_weights['sequence_weight']
         steer_loss, steer_losses = weighted_sequence_mse(targets['steer'], outputs['steer'], control_weights)
-        throttle_loss, throttle_losses = weighted_sequence_mse(targets['throttle'], outputs['throttle'], control_weights)
+        throttle_loss, throttle_losses = weighted_sequence_mse(
+            targets['throttle'], outputs['throttle'], control_weights)
         brake_loss, brake_losses = weighted_sequence_mse(targets['brake'], outputs['brake'], control_weights)
         steer_loss = class_weights['controls']['steer'] * steer_loss
         throttle_loss = class_weights['controls']['throttle'] * throttle_loss
@@ -211,16 +213,17 @@ class Baseline(Model):
         tl_loss = weighted_softmax_crossentropy(targets['tl_state'], outputs['tl_state'], class_weights['tl'])
         tl_loss = loss_weights['tl'] * tl_loss
         # Seg and depth loss
-        seg_loss = weighted_softmax_crossentropy(tf.one_hot(targets['segmentation'], 13), outputs['segmentation'], class_weights['segmentation'])
+        seg_loss = weighted_softmax_crossentropy(tf.one_hot(
+            targets['segmentation'], 13), outputs['segmentation'], class_weights['segmentation'])
         seg_loss = loss_weights['segmentation'] * seg_loss
         dep_loss = mse(targets['depth'], outputs['depth'])
         dep_loss = loss_weights['depth'] * dep_loss
         # Total loss
         total_loss = controls_loss + speed_loss + tl_loss + seg_loss + dep_loss
         # Each sample loss
-        every_single_sample_losses = (class_weights['controls']['steer'] * steer_losses \
-            + class_weights['controls']['throttle'] * throttle_losses \
-            + class_weights['controls']['brake'] * brake_losses) * (1. / 3)
+        every_single_sample_losses = (class_weights['controls']['steer'] * steer_losses
+                                      + class_weights['controls']['throttle'] * throttle_losses
+                                      + class_weights['controls']['brake'] * brake_losses) * (1. / 3)
 
         return {
             'steer_loss': steer_loss,
@@ -246,12 +249,13 @@ class Baseline(Model):
         # Seg and Depth
         equality = tf.equal(tf.cast(targets['segmentation'], tf.int64), tf.argmax(outputs['segmentation'], axis=-1))
         seg_accuracy = tf.reduce_mean(tf.cast(equality, tf.float32))
-        depth_mae = mae(targets['depth'], outputs['depth'] )
+        depth_mae = mae(targets['depth'], outputs['depth'])
         # TL
-        tl_equality = tf.equal(tf.argmax(tf.cast(targets['tl_state'], tf.int64), axis=-1), tf.argmax(outputs['tl_state'], axis=-1))
+        tl_equality = tf.equal(tf.argmax(tf.cast(targets['tl_state'], tf.int64),
+                               axis=-1), tf.argmax(outputs['tl_state'], axis=-1))
         tl_accuracy = tf.reduce_mean(tf.cast(tl_equality, tf.float32))
         # TOTAL
-        total_metrics = (controls_metrics + speed_mae - tl_accuracy  - seg_accuracy + depth_mae) / 5
+        total_metrics = (controls_metrics + speed_mae - tl_accuracy - seg_accuracy + depth_mae) / 5
 
         return {
             'steer_mae': steer_mae,
@@ -264,3 +268,105 @@ class Baseline(Model):
             'depth_mae': depth_mae,
             'total_metrics': total_metrics,
         }
+
+    def gradcam(self, x, target_output='control', filename='mt_{target}.png', indices=None, *args, **kwargs):
+        """GradCAM on batch data
+        Args:
+            x: batch of inputs
+            target_layer: name of target layer to vizualize gradcam
+            target_output: name of target output which grad will be calculated based on
+            filename: png filename of the saliency maps to be saved. `target` argment is given to format method.
+        Return:
+            heatmaps: list of heatmap images
+            aligned_heatmap: an image containing all heatmap images over input images
+        """
+        assert self._has_built, 'model has not built yet, call model.build_model() first.'
+        assert target_output in [
+            'tl_state', 'control'], f'target_output must be either `tl_state` or `control`, not {target_output}'
+
+        print('Note: make sure you have loaded a certain checkpoints to the model')
+
+        filename = filename.format(target=target_output)
+
+        print('preparing gradcam-specific models..')
+
+        self.gradcam_model = tf.keras.Model(
+            inputs=self.model.inputs,
+            outputs={
+                'latent_features': self.model.output['latent_features'],
+                'steer': self.model.output['steer'],
+                'throttle': self.model.output['throttle'],
+                'brake': self.model.output['brake'],
+                'tl_state': self.model.output['tl_state'],
+            },
+            name='gradcam_model',
+        )
+
+        if target_output == 'tl_state':
+            # perform gradcam on tl_state
+            with tf.GradientTape() as tape:
+                outputs = self.gradcam_model(list(x.values()))
+                target_conv_layer_output = outputs['latent_features']
+                tape.watch(target_conv_layer_output)
+                preds = outputs[target_output]
+                top_pred_index = tf.argmax(preds, axis=-1)
+                top_class_channel = tf.gather_nd(preds, np.dstack([range(preds.shape[0]), top_pred_index])[0])
+
+            grads = tape.gradient(top_class_channel, target_conv_layer_output)
+            pooled_grads = tf.reduce_mean(grads, axis=(1, 2))
+            # (batch, h, w, c), (batch, c) -> (batch, h, w, c)
+            target_conv_layer_output = tf.einsum('ijkl,il->ijkl', target_conv_layer_output, pooled_grads)
+            heatmap = np.mean(target_conv_layer_output, axis=-1)
+
+        else:
+            # perform gradcam on control
+            with tf.GradientTape(persistent=True) as tape:
+                outputs = self.gradcam_model(list(x.values()))
+                last_conv_layer_output = outputs['latent_features']
+                tape.watch(last_conv_layer_output)
+
+            pooled_grads = 0
+            for target in ['steer', 'throttle', 'brake']:
+                grads = tape.gradient(outputs[target], last_conv_layer_output)
+                grads = tf.reduce_mean(grads, axis=(1, 2))
+                pooled_grads += grads
+
+            # (batch, h, w, c), (batch, c) -> (batch, h, w, c)
+            last_conv_layer_output = tf.einsum('ijkl,il->ijkl', last_conv_layer_output, pooled_grads)
+            heatmap = np.mean(last_conv_layer_output, axis=-1)
+
+        # heatmaps over input images
+        _heatmap = []
+        for i, h in enumerate(heatmap):
+            h = np.maximum(h, 0) / np.max(h)
+            h = cv2.applyColorMap(np.uint8(cv2.resize(h, (384, 160)) * 255), cv2.COLORMAP_JET)
+            h = cv2.cvtColor(h, cv2.COLOR_BGR2RGB)
+            h = x['input_images'][i] + h / 255
+            h = np.maximum(h, 0) / np.max(h)
+            h = np.uint8(h * 255)
+            _heatmap.append(h)
+
+        heatmaps = np.uint8(_heatmap)
+        if indices is not None:
+            heatmaps = heatmaps[indices]
+
+        # align
+        n_heatmaps = len(heatmaps)
+        w_heatmaps = int(np.ceil(np.sqrt(n_heatmaps)))
+        h_heatmaps = int(np.ceil(n_heatmaps / w_heatmaps))
+
+        # black images for the remainder
+        n_remainder = w_heatmaps * h_heatmaps - n_heatmaps
+        if n_remainder > 0:
+            black_image = np.zeros((160, 384, 3), dtype=np.uint8)
+            _heatmaps = np.concatenate([heatmaps, [black_image] * n_remainder], axis=0)
+        else:
+            _heatmaps = heatmaps
+
+        aligned_heatmap = np.uint8(
+            np.vstack([np.hstack(_heatmaps[w_heatmaps * h : w_heatmaps * (h + 1)]) for h in range(h_heatmaps)]))
+
+        if filename is not None:
+            imsave(filename, aligned_heatmap)
+
+        return heatmaps, aligned_heatmap
