@@ -18,6 +18,7 @@ And here is another docs for runnning in a docker: https://carla.readthedocs.io/
 ## Installation
 The easiest way to build the env is to use pyenv and venv or other env-handler.
 The code provided is tested on Python 3.6.8.
+Note: if you go with pyenv, 1.2.24 is recommended: https://github.com/pyenv/pyenv/releases/tag/1.2.24
 ```bash
 $ git clone https://github.com/KeishiIshihara/multitask-with-attention.git --recursive
 $ cd multitask-with-attention
@@ -34,8 +35,6 @@ To run our pretrained agent to see how it drives:
 ```bash
 # Download weights from archive
 $ ./download_weights.sh
-# Unzip the weights
-$ unzip ckpts.zip
 # Start Carla server with docker
 $ docker run -p 2000-2002:2000-2002 --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 carlasim/carla:0.8.4 /bin/bash CarlaUE4.sh /Game/Maps/Town01 --world-port=2000 -benchmark -fps=10
 # Activate env if you haven't
@@ -46,6 +45,17 @@ $ source env/bin/activate
 You should now be able to see the video rendered from a third-person perspective with carera rgb input and action values that the agent is taking.
 Note that this scenario is not from the carla benchmark test, but only some basic episodes.
 
+
+## GradCam heatmaps
+Once you have downloaded pretrained weights, you can generate gradcam heatmaps on your own. The command below generates heatmaps to `/reports/saliency_maps` by default:
+```
+$ python gradcam.py --h5-dataset-path /path/to/your/dataset.h5
+```
+For more options, see [gradcam.py](./gradcam.py)
+
+
+## Troubleshooting
+Please refer to [troubleshooting.md](./docs/troubleshooting.md).
 
 ## Citation
 If you find this repo to be useful in your research, please consider citing our work.
